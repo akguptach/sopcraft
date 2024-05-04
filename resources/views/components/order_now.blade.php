@@ -1,0 +1,1 @@
+<a href="{{ route('order') }}" class="btn btn-call">Order Now</a>
