@@ -65,7 +65,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/payment-validation', [Payment::class, 'paymentValidation'])->name('payment-validation');
     Route::post('/paymentsave', [Payment::class, 'payment']);
     Route::get('/transactions', [Order::class, 'transactions'])->name('order.transactions');
-    Route::get('/vieworder/{oid}', [Order::class, 'vieworder'])->name('order.vieworder');
+    Route::any('/vieworder/{oid}', [Order::class, 'vieworder'])->name('order.vieworder');
 
     Route::get('/refer_friend_individual', [Order::class, 'refer_friend'])->name('order.refer_friend');
     Route::get('/statements', [Order::class, 'statements'])->name('order.statements');

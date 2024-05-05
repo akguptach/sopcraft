@@ -15,9 +15,16 @@ use App\Models\OrdersDetails;
 use Response;
 use Validator;
 use Illuminate\Support\Facades\Storage;
+use App\Services\OrderService;
+use App\Http\Requests\OrderRequestMessageRequest;
 
 class OrderController extends Controller
 {
+
+    public function __construct(protected OrderService $orderService)
+    {
+    }
+
     public function index()
     {
         //         dd('gg');
@@ -62,9 +69,44 @@ class OrderController extends Controller
         return Response::json(['success' => 'true', 'price' => $websiteArr['currency_sign'] . round($total), 'price1' => round($total) . ' ' . $websiteArr['currency']]);
     }
 
+
+    public function processAttachment(Request $request)
+    {
+
+
+        if (session()->has('attachment')) {
+            session()->forget('attachment');
+        }
+        $type = $request->type;
+        $attachment = $request->attachment;
+        $data = [];
+        if ($type == 'url') {
+            $data['type'] = $type;
+            $data['attachment'] = $attachment;
+            session()->put('attachment', $data);
+        }
+        if ($type == 'file') {
+            $attachmentList = [];
+            for ($i = 0; $i < $request->total_file; $i++) {
+                $key = 'attachment_' . $i;
+                $attachment = $request->$key;
+                $attachmentName = time() . '.' . $attachment->getClientOriginalExtension();
+                $attachment->move(public_path('images/uploads/attachment/'), $attachmentName);
+                $attachmentList[] = env('APP_URL', '/') . 'images/uploads/attachment/' . $attachmentName;
+            }
+            $data['type'] = $type;
+            $data['attachment'] = $attachmentList;
+            session()->put('attachment', $data);
+        }
+        if (session()->has('attachment')) {
+            return session('attachment');
+        }
+    }
+
+
     public function create(Request $request)
     {
-        $url = 'https://s3.' . config('app.aws_default_region') . '.amazonaws.com/' . config('app.aws_bucket') . '/';
+        //$url = 'https://s3.' . config('app.aws_default_region') . '.amazonaws.com/' . config('app.aws_bucket') . '/';
 
         $website_id = config('app.website_id');
 
@@ -98,7 +140,10 @@ class OrderController extends Controller
         $order->no_of_words = $request->no_of_words;
 
         $order->studylabel_id = $request->studylabel_id;
+
+
         $order->delivery_date = $request->delivery_date;
+
         $arrPrice = explode(' ', $request->delivery_price);
         $order->price = $arrPrice[0];
         $order->currency_code = $arrPrice[1];
@@ -106,7 +151,22 @@ class OrderController extends Controller
         $order->student_id = Auth::id();
 
         // Handle file upload to S3
-        if ($request->hasFile('fileupload')) {
+
+        if ($request->has("fileupload")) {
+
+            $attachment = request()->file('fileupload');
+            $attachmentName = time() . '.' . $attachment->getClientOriginalExtension();
+            $attachment->move(public_path('images/uploads/attachment/'), $attachmentName);
+            $attachment = env('APP_URL', '/') . '/images/uploads/attachment/' . $attachmentName;
+            $order->fileupload = $attachment;
+        } else {
+            if ($request->delivery_pricefile_upload_url) {
+                $order->fileupload = $request->delivery_pricefile_upload_url;
+            }
+        }
+
+        /*if ($request->hasFile('fileupload')) {
+
             $file = $request->file('fileupload');
             $path = $file->store('uploads', 's3'); // Use S3 as the disk
             $order->fileupload = $url . $path;
@@ -114,7 +174,7 @@ class OrderController extends Controller
             if ($request->delivery_pricefile_upload_url) {
                 $order->fileupload = $request->delivery_pricefile_upload_url;
             }
-        }
+        }*/
 
         $order->save();
 
@@ -124,12 +184,25 @@ class OrderController extends Controller
             $orderDetail->order_id = $order->id;
             $orderDetail->ques_ans = $taskTitle;
 
-            // Handle file upload for each taskfile
+
+
             if ($request->hasFile("taskfile.$key")) {
+
+                $attachment = request()->file("taskfile.$key");
+                $attachmentName = time() . '.' . $attachment->getClientOriginalExtension();
+                $attachment->move(public_path('images/uploads/attachment/'), $attachmentName);
+                $attachment = env('APP_URL', '/') . '/images/uploads/attachment/' . $attachmentName;
+                $orderDetail->attechment_file = $attachment;
+            }
+
+            // Handle file upload for each taskfile
+            /*if ($request->hasFile("taskfile.$key")) {
+
                 $taskFile = $request->file("taskfile.$key");
                 $taskFilePath = $taskFile->store('taskfiles', 's3');
                 $orderDetail->attechment_file = $url . $taskFilePath;
-            }
+
+            }*/
 
             $orderDetail->save();
         }
@@ -244,8 +317,8 @@ class OrderController extends Controller
 
         return view('transactions', $data);
     }
-	
-	public function vieworder($id)
+
+    /*public function vieworder($id)
 	{
 		$user_id = Auth::id();
         $arrD = DB::table('orders') 
@@ -260,7 +333,17 @@ class OrderController extends Controller
 
         $data['order'] = $arrD[0];
 		return view('order_details', $data);
-	}
+
+	}*/
+    public function vieworder(OrderRequestMessageRequest $request, $id)
+    {
+        $user_id = Auth::id();
+        if ($request->isMethod('post')) {
+            $result = $this->orderService->saveOrderMessage($request, $id);
+            return redirect()->back()->with($result['status'], $result['message']);
+        }
+        return view('order_details', $this->orderService->orderDetails($id, $user_id));
+    }
 
     public function refer_friend()
     {
